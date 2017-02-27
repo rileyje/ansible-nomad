@@ -45,14 +45,14 @@
 
 - name: Check if Nomad is already installed
   stat:
-    path: "{{ nomad_install_dir }}/nomad"
+    path: "{{ nomad_bin_dir }}/nomad"
   register: nomad_bin
   changed_when: false
   tags:
     - nomad
 
 - name: Get currently installed Nomad version
-  shell: "{{ nomad_install_dir }}/nomad version | grep '^Nomad' | cut -d' ' -f2 | sed -e 's/^v//'"
+  shell: "{{ nomad_bin_dir }}/nomad version | grep '^Nomad' | cut -d' ' -f2 | sed -e 's/^v//'"
   register: installed_nomad_version
   when: nomad_bin.stat.exists
   changed_when: false
@@ -60,7 +60,7 @@
     - nomad
 
 - name: Get list of installed Nomad files
-  shell: ls -1 {{ nomad_install_dir }}/nomad*
+  shell: ls -1 {{ nomad_bin_dir }}/nomad*
   register: nomad_files
   when: not installed_nomad_version | skipped
   changed_when: false
@@ -91,13 +91,24 @@
   tags:
     - nomad
 
-- name: Unzip Nomad to installation directory
+- name: Create Nomad bin directory
   become: yes
-  command: unzip {{ nomad_download_dir }}/nomad.zip -d {{ nomad_install_dir }}
-  args:
-    creates: "{{ nomad_install_dir }}/nomad"
+  file:
+    path: "{{ nomad_bin_dir }}"
+    state: directory
+    mode: 0755
+
+  
+
+- name: Unarchive nomad.zip
+  become: yes
+  unarchive:
+    src: /root/nomad.zip
+    dest: "{{ nomad_bin_dir }}"
+    remote_src: True
   tags:
     - nomad
+
 
 - name: Create Nomad configuration directory
   become: yes
@@ -133,6 +144,21 @@
     - restart nomad
   tags:
     - nomad
+  when: ansible_os_family != "RedHat"
+
+- name: Create Nomad systemd configuration
+  become: yes
+  template:
+    src: nomad.service.j2
+    dest: /usr/lib/systemd/system/nomad.service
+    owner: root
+    group: root
+    mode: 0644
+  notify:
+    - systemd reload
+  tags:
+    - nomad
+  when: ansible_os_family == "RedHat"
 
 - name: Create Nomad configuration file
   become: yes
